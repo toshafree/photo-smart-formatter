@@ -46,6 +46,15 @@ export function DownloadIcon({ size = 20, className }: IconProps) {
   );
 }
 
+export function MailIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg {...base(size, className)}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </svg>
+  );
+}
+
 export function EyeIcon({ size = 20, className }: IconProps) {
   return (
     <svg {...base(size, className)}>

@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import { createResultsZip } from "./lib/archive";
 import { DEFAULT_MODEL, MODEL_PROFILES } from "./config/models";
+import { EMAIL_API_URL, EMAIL_DELIVERY_ENABLED, SMARTCAPTCHA_SITE_KEY } from "./config/email";
 import { DEFAULT_FORMATS } from "./data/default-formats";
 import { createFormatId } from "./lib/format";
 import {
@@ -12,6 +21,7 @@ import {
 } from "./lib/storage";
 import { MAX_UPLOAD_BYTES, readImageDimensions } from "./lib/image";
 import { analyzePhoto, createMockAnalysis } from "./lib/deepseek";
+import { emailResultsZip, type EmailStage } from "./lib/email";
 import { mapConcurrent, runPhotoPipeline } from "./lib/pipeline";
 import type { ModelId, OutputFormat, PhotoItem } from "./types";
 import { FormatCatalog } from "./components/FormatCatalog";
@@ -22,11 +32,13 @@ import {
   EyeIcon,
   EyeOffIcon,
   ImageIcon,
+  MailIcon,
   SparkIcon,
   TrashIcon,
   UploadIcon,
   XIcon,
 } from "./components/Icons";
+import { SmartCaptcha } from "./components/SmartCaptcha";
 
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -52,6 +64,12 @@ function describeError(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка обработки.";
 }
 
+const EMAIL_STAGE_TEXT: Record<EmailStage, string> = {
+  preparing: "Подготавливаем безопасную загрузку…",
+  uploading: "Загружаем ZIP…",
+  sending: "Отправляем письмо…",
+};
+
 export default function App() {
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -64,6 +82,13 @@ export default function App() {
   const [globalPrompt, setGlobalPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [isEmailing, setIsEmailing] = useState(false);
+  const [emailStatus, setEmailStatus] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [notice, setNotice] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingFormat, setEditingFormat] = useState<OutputFormat | undefined>();
@@ -356,6 +381,47 @@ export default function App() {
       setNotice(describeError(error));
     } finally {
       setIsZipping(false);
+    }
+  }
+
+  function openEmailForm() {
+    setEmailOpen(true);
+    setEmailStatus("");
+    setEmailError("");
+    setCaptchaToken("");
+    setCaptchaResetKey((value) => value + 1);
+  }
+
+  async function sendZipByEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!successfulCount || !email.trim() || !captchaToken || isEmailing) return;
+
+    setIsEmailing(true);
+    setEmailError("");
+    setEmailStatus("Собираем ZIP…");
+    try {
+      const blob = await createResultsZip(photos);
+      await emailResultsZip({
+        apiUrl: EMAIL_API_URL,
+        email: email.trim(),
+        captchaToken,
+        zip: blob,
+        onStage: (stage) => setEmailStatus(EMAIL_STAGE_TEXT[stage]),
+      });
+      setEmailStatus("Готово — письмо со ссылкой на ZIP отправлено.");
+    } catch (error) {
+      setEmailStatus("");
+      setEmailError(
+        error instanceof TypeError
+          ? "Не удалось связаться с сервисом отправки. Проверьте сеть и повторите попытку."
+          : error instanceof Error
+            ? error.message
+            : "Не удалось отправить ZIP.",
+      );
+    } finally {
+      setCaptchaToken("");
+      setCaptchaResetKey((value) => value + 1);
+      setIsEmailing(false);
     }
   }
 
@@ -728,16 +794,97 @@ export default function App() {
                   <h2 id="results-title">Готовые изображения</h2>
                 </div>
               </div>
-              <button
-                className="button button--primary"
-                type="button"
-                onClick={() => void downloadZip()}
-                disabled={!successfulCount || isZipping}
-              >
-                <DownloadIcon />{" "}
-                {isZipping ? "Собираем ZIP…" : `Скачать всё ZIP · ${successfulCount}`}
-              </button>
+              <div className="result-actions">
+                <button
+                  className="button button--primary"
+                  type="button"
+                  onClick={() => void downloadZip()}
+                  disabled={!successfulCount || isZipping || isEmailing}
+                >
+                  <DownloadIcon />{" "}
+                  {isZipping ? "Собираем ZIP…" : `Скачать всё ZIP · ${successfulCount}`}
+                </button>
+                {EMAIL_DELIVERY_ENABLED && (
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={openEmailForm}
+                    disabled={!successfulCount || isZipping || isEmailing}
+                  >
+                    <MailIcon /> Отправить ZIP по почте
+                  </button>
+                )}
+              </div>
             </div>
+            {emailOpen && EMAIL_DELIVERY_ENABLED && (
+              <div className="email-panel" role="region" aria-labelledby="email-panel-title">
+                <div className="email-panel__heading">
+                  <div>
+                    <p className="eyebrow">Временная ссылка</p>
+                    <h3 id="email-panel-title">Отправить ZIP по почте</h3>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setEmailOpen(false)}
+                    aria-label="Закрыть форму отправки"
+                    disabled={isEmailing}
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+                <form className="email-form" onSubmit={(event) => void sendZipByEmail(event)}>
+                  <label className="field">
+                    <span>Email получателя</span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="name@example.ru"
+                      autoComplete="email"
+                      required
+                      disabled={isEmailing}
+                    />
+                  </label>
+                  {!emailStatus.startsWith("Готово") && (
+                    <SmartCaptcha
+                      key={captchaResetKey}
+                      siteKey={SMARTCAPTCHA_SITE_KEY}
+                      onToken={(token) => {
+                        setCaptchaToken(token);
+                        if (token) setEmailError("");
+                      }}
+                      onError={setEmailError}
+                    />
+                  )}
+                  <div className="email-form__footer">
+                    <p>
+                      ZIP временно загрузится в закрытое хранилище. Ссылка действует 24 часа; архив
+                      удаляется автоматически.
+                    </p>
+                    {!emailStatus.startsWith("Готово") && (
+                      <button
+                        className="button button--primary"
+                        type="submit"
+                        disabled={!email.trim() || !captchaToken || isEmailing}
+                      >
+                        <MailIcon /> {isEmailing ? emailStatus : "Отправить ссылку"}
+                      </button>
+                    )}
+                  </div>
+                  {emailStatus && (
+                    <p className="email-message email-message--success" role="status">
+                      {emailStatus}
+                    </p>
+                  )}
+                  {emailError && (
+                    <p className="email-message email-message--error" role="alert">
+                      {emailError}
+                    </p>
+                  )}
+                </form>
+              </div>
+            )}
             <div className="result-list">
               {photos
                 .filter((photo) => photo.outputs.length)

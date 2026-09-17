@@ -35,6 +35,8 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_EMAIL_API_URL: ${{ vars.VITE_EMAIL_API_URL }}
+          VITE_SMARTCAPTCHA_SITE_KEY: ${{ vars.VITE_SMARTCAPTCHA_SITE_KEY }}
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

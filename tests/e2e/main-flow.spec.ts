@@ -38,5 +38,6 @@ test("uploads a photo and prepares a result without a real API call", async ({ p
   expect(imageBox!.height).toBeCloseTo(frameBox!.height, 0);
   await expect(page.getByText("До", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Скачать файл" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Отправить ZIP по почте" })).toBeVisible();
   await expect(page.getByText("Лимит соблюдён")).toBeVisible();
 });

@@ -1,0 +1,15 @@
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["Content-Type", "If-None-Match"],
+      "AllowedMethods": ["PUT"],
+      "AllowedOrigins": [
+        "https://toshafree.github.io",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Кадр — интеллектуальная подготовка фотографий
 
-Статическое React-приложение для подготовки одной или нескольких фотографий под каталог точных размеров. DeepSeek Vision один раз анализирует каждую фотографию и возвращает план кадрирования и умеренной коррекции для всех выбранных форматов. Пиксели обрабатываются локально в браузере; готовые файлы можно скачать отдельно или одним ZIP с `manifest.json`.
+Статическое React-приложение для подготовки одной или нескольких фотографий под каталог точных размеров. DeepSeek Vision один раз анализирует каждую фотографию и возвращает план кадрирования и умеренной коррекции для всех выбранных форматов. Пиксели обрабатываются локально в браузере; готовые файлы можно скачать отдельно, одним ZIP с `manifest.json` или отправить временную ссылку на ZIP по почте.
 
 ## Быстрый старт
 
@@ -35,6 +35,7 @@ E2E-тест включает `VITE_MOCK_DEEPSEEK=true` только для ло
 5. Оригинал повторно декодируется локально. При необходимости Canvas сначала исправляет визуальную ориентацию, затем выполняются crop, ресемплинг `pica`, детерминированная цветокоррекция и кодирование. Исходный файл не загружается никуда ещё.
 6. JPEG quality подбирается бинарным поиском по фактическому размеру Blob в диапазоне 0.45–0.95. PNG остаётся lossless: если лимит недостижим, это явно отмечается. Габариты, MIME и повторное декодирование проверяются до показа результата.
 7. ZIP содержит только результаты, уложившиеся в лимит, по папке на исходник. `manifest.json` не содержит ключ, исходные изображения, пользовательские prompts или полный ответ модели.
+8. При отправке по почте ZIP загружается по короткоживущей подписанной ссылке в закрытый Yandex Object Storage. Cloud Function после проверки SmartCaptcha отправляет через Yandex SMTP ссылку, действующую 24 часа. При обычном скачивании ZIP никуда не загружается.
 
 Код разделён на каталог данных (`src/data`), конфигурацию модели и системный prompt (`src/config`), валидацию/DeepSeek/Canvas/очередь/ZIP (`src/lib`) и UI (`src/components`, `src/App.tsx`). Вызов API сделан через стандартный `fetch`, чтобы не включать серверный SDK и его окружение в статический bundle. Синтаксис сверялся с официальной документацией DeepSeek: [Vision](https://api-docs.deepseek.com/guides/vision/), [Responses API](https://api-docs.deepseek.com/guides/responses_api/) и [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/).
 
@@ -75,6 +76,8 @@ BYOK-ключ всё ещё доступен JavaScript доверенной с�
 
 Workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) запускает форматирование, lint, typecheck, unit/integration tests и production build, после чего публикует `dist`. Для project pages он передаёт Vite базовый путь `/<repository-name>/`; локально используется `/`.
 
-В репозитории GitHub откройте **Settings → Pages → Source** и выберите **GitHub Actions**. Затем отправьте изменения в ветку `main`. Никакие API keys в GitHub Secrets не нужны и не должны добавляться.
+В репозитории GitHub откройте **Settings → Pages → Source** и выберите **GitHub Actions**. Затем отправьте изменения в ветку `main`. DeepSeek API key и серверные Yandex Cloud secrets в GitHub не добавляются.
+
+Для включения кнопки отправки ZIP workflow читает две публичные repository variables: `VITE_EMAIL_API_URL` и `VITE_SMARTCAPTCHA_SITE_KEY`. Полная настройка Object Storage, Yandex SMTP, SmartCaptcha и Cloud Function описана в [`docs/yandex-email-setup.md`](docs/yandex-email-setup.md).
 
 Приложение не использует client routing, поэтому обновление страницы и размещение в подпути GitHub Pages не требуют SPA fallback.

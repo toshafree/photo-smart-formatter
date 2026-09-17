@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "delete-mail-archives",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Expiration": { "Days": 1 }
+    }
+  ]
+}
