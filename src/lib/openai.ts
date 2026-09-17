@@ -1,9 +1,8 @@
 import { ANALYSIS_JSON_SCHEMA, validateAnalysis } from "./analysis";
 import { HttpError, withRetry } from "./retry";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
+import { resolveOpenAIResponsesUrl } from "../config/api";
 import type { AnalysisResult, ModelId, OutputFormat } from "../types";
-
-const RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 type AnalyzeInput = {
   apiKey: string;
@@ -94,7 +93,7 @@ async function callOpenAI(input: AnalyzeInput, repairErrors?: string[]) {
   const fetchImpl = input.fetchImpl ?? fetch;
   const response = await withRetry(
     () =>
-      fetchImpl(RESPONSES_URL, {
+      fetchImpl(resolveOpenAIResponsesUrl(), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${input.apiKey}`,

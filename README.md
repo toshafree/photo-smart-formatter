@@ -29,7 +29,7 @@ E2E-тест включает `VITE_MOCK_OPENAI=true` только для лок
 ## Архитектура и поток данных
 
 1. Браузер читает EXIF orientation, декодирует файл и нормализует ориентацию на Canvas.
-2. Уменьшенная JPEG-копия (не более 1600 px по длинной стороне), размеры ориентированного исходника, prompts и параметры выбранных форматов отправляются напрямую в OpenAI Responses API. Запрос использует `store: false`.
+2. Уменьшенная JPEG-копия (не более 1600 px по длинной стороне), размеры ориентированного исходника, prompts и параметры выбранных форматов отправляются в OpenAI Responses API через минимальный Cloudflare Worker proxy. Запрос использует `store: false`; Worker не сохраняет и не логирует тело или BYOK-ключ.
 3. На одну исходную фотографию выполняется один основной vision-запрос для всех форматов. При невалидной инструкции разрешён ровно один repair-запрос; временные `429`/`5xx` повторяются с exponential backoff и jitter. Одновременно анализируются не более двух фотографий.
 4. Ответ запрашивается через строгий JSON Schema (`text.format`, `type: "json_schema"`, `strict: true`), затем повторно проверяется Zod и семантическими правилами в браузере.
 5. Оригинал повторно декодируется локально. Crop, ресемплинг `pica`, детерминированная цветокоррекция и кодирование выполняются браузером. Исходный файл не загружается никуда ещё.
@@ -40,11 +40,11 @@ E2E-тест включает `VITE_MOCK_OPENAI=true` только для лок
 
 ## Безопасность BYOK
 
-API key существует только в React state текущей вкладки. Приложение не записывает его в `localStorage`, `sessionStorage`, IndexedDB, URL, ZIP, логи или telemetry. В проекте нет analytics и сторонних сетевых запросов; единственный прикладной внешний запрос идёт на `https://api.openai.com/v1/responses`.
+API key существует только в React state текущей вкладки. Приложение не записывает его в `localStorage`, `sessionStorage`, IndexedDB, URL, ZIP, логи или telemetry. В опубликованной сборке запрос проходит через принадлежащий проекту Cloudflare Worker и затем в OpenAI. Worker пересылает ключ только в заголовке `Authorization`, не сохраняет тело и не возвращает служебные cookies.
 
 Полностью статический BYOK-интерфейс всё равно не является секретным хранилищем: выполняющийся на странице JavaScript видит введённый ключ. Пользуйтесь только доверенной опубликованной сборкой. В OpenAI создайте отдельный project API key для этого инструмента, задайте проекту небольшой месячный бюджет/лимит и отзывайте ключ, когда он больше не нужен. Не используйте личный основной ключ.
 
-Для многопользовательской production-версии нужен собственный backend или edge-proxy с аутентификацией, rate limits, квотами и секретом на серверной стороне. Общий секрет нельзя раздавать браузерам.
+BYOK-ключ всё ещё доступен JavaScript доверенной страницы и проходит через Worker во время запроса. Для многопользовательской production-версии с общим ключом нужны аутентификация, rate limits, квоты и секрет только на серверной стороне. Общий секрет нельзя раздавать браузерам.
 
 ## Форматы
 
@@ -70,11 +70,21 @@ API key существует только в React state текущей вкла
 - Upscale разрешён ради точного размера, но помечается предупреждением.
 - PNG кодируется lossless без ложной надежды на аргумент `quality`. Palette quantization в MVP не применяется.
 - Браузер не удаляет и не дорисовывает текст, логотипы или объекты. Модель может только подобрать crop и предупредить о конфликте.
-- CORS-доступ к OpenAI API зависит от политики API и браузера. Сетевые/CORS-ошибки отображаются без вывода ключа или тела запроса.
+- В локальной разработке без `VITE_OPENAI_PROXY_URL` используется прямой OpenAI endpoint. Опубликованную сборку следует собирать с URL Worker: это устраняет зависимость браузера от CORS OpenAI. Сетевые ошибки отображаются без вывода ключа или тела запроса.
 
 ## GitHub Pages
 
 Workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) запускает форматирование, lint, typecheck, unit/integration tests и production build, после чего публикует `dist`. Для project pages он передаёт Vite базовый путь `/<repository-name>/`; локально используется `/`.
+
+### Настройка Cloudflare Worker proxy
+
+1. Создайте Cloudflare API token с правом редактирования Workers и узнайте Account ID.
+2. В GitHub откройте **Settings → Secrets and variables → Actions → Secrets** и добавьте `CLOUDFLARE_API_TOKEN` и `CLOUDFLARE_ACCOUNT_ID`. OpenAI API key сюда добавлять не нужно.
+3. Запустите вручную workflow **Deploy OpenAI proxy**. Он использует [`wrangler.toml`](wrangler.toml) и публикует [`worker/index.ts`](worker/index.ts).
+4. Скопируйте URL Worker, добавьте `/v1/responses` и сохраните его как repository variable `OPENAI_PROXY_URL` в **Settings → Secrets and variables → Actions → Variables**.
+5. Повторно запустите workflow публикации GitHub Pages или отправьте новый коммит в `main`.
+
+Worker принимает запросы только с origin `https://toshafree.github.io`, ограничивает тело 12 МБ, разрешает только `POST /v1/responses` и не хранит запросы. Флаг `global_fetch_strictly_public` разрешает Worker обращаться к публичному OpenAI endpoint, который также обслуживается сетью Cloudflare. Для другого домена обновите `ALLOWED_ORIGINS` в [`wrangler.toml`](wrangler.toml). Локальный пример переменной находится в [`.env.example`](.env.example).
 
 В репозитории GitHub откройте **Settings → Pages → Source** и выберите **GitHub Actions**. Затем отправьте изменения в ветку `main`. Никакие API keys в GitHub Secrets не нужны и не должны добавляться.
 

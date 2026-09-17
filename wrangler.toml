@@ -1,0 +1,8 @@
+name = "photo-smart-formatter-openai-proxy"
+main = "worker/index.ts"
+compatibility_date = "2026-09-17"
+compatibility_flags = ["global_fetch_strictly_public"]
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://toshafree.github.io"

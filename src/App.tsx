@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { createResultsZip } from "./lib/archive";
 import { DEFAULT_MODEL, MODEL_PROFILES } from "./config/models";
+import { OPENAI_PROXY_CONFIGURED } from "./config/api";
 import { DEFAULT_FORMATS } from "./data/default-formats";
 import { createFormatId } from "./lib/format";
 import {
@@ -46,7 +47,10 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function describeError(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") return "Операция отменена.";
-  if (error instanceof TypeError) return "Сетевая ошибка или запрос заблокирован браузером (CORS).";
+  if (error instanceof TypeError)
+    return OPENAI_PROXY_CONFIGURED
+      ? "Не удалось связаться с OpenAI proxy. Проверьте сеть и повторите попытку."
+      : "Прямой запрос к OpenAI заблокирован браузером или сетью. Для опубликованной версии настройте OpenAI proxy.";
   if (error instanceof RangeError) return "Браузеру не хватило памяти для обработки изображения.";
   return error instanceof Error ? error.message : "Неизвестная ошибка обработки.";
 }
@@ -448,9 +452,9 @@ export default function App() {
               <div className="security-note">
                 <strong>Ключ хранится только в памяти вкладки</strong>
                 <p>
-                  Это публичное клиентское приложение: ключ доступен JavaScript страницы.
-                  Используйте только доверенную сборку и отдельный проектный ключ с небольшим
-                  лимитом расходов.
+                  {OPENAI_PROXY_CONFIGURED
+                    ? "Запрос проходит через проектный proxy без сохранения ключа и тела. Ключ всё равно доступен JavaScript страницы — используйте отдельный проектный ключ с небольшим лимитом расходов."
+                    : "Proxy не настроен: браузер обращается к OpenAI напрямую, и некоторые сети могут блокировать запрос. Используйте только доверенную сборку и отдельный проектный ключ с небольшим лимитом расходов."}
                 </p>
               </div>
             </div>
