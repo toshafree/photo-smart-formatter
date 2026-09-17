@@ -1,7 +1,8 @@
 import picaFactory from "pica";
 import { orientation as readOrientation } from "exifr";
 import { mapCropToPixels } from "./crop";
-import type { Adjustments, Box, OutputFormat } from "../types";
+import { rotatedDimensions } from "./orientation";
+import type { Adjustments, Box, OutputFormat, RotationDegrees } from "../types";
 
 const pica = picaFactory();
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
@@ -107,6 +108,18 @@ export async function createVisionPreview(source: HTMLCanvasElement): Promise<st
   const blob = await canvasToBlob(target, "image/jpeg", 0.84);
   releaseCanvas(target);
   return blobToDataUrl(blob);
+}
+
+export function rotateCanvas(source: HTMLCanvasElement, rotation: RotationDegrees) {
+  if (rotation === 0) return source;
+  const dimensions = rotatedDimensions(source.width, source.height, rotation);
+  const target = createCanvas(dimensions.width, dimensions.height);
+  const context = getContext(target);
+  context.translate(target.width / 2, target.height / 2);
+  context.rotate((rotation * Math.PI) / 180);
+  context.drawImage(source, -source.width / 2, -source.height / 2);
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  return target;
 }
 
 function clampChannel(value: number) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findJpegQuality, validateEncodedMetadata } from "../src/lib/image";
+import { rotatedDimensions } from "../src/lib/orientation";
 import type { OutputFormat } from "../src/types";
 
 const format: OutputFormat = {
@@ -45,5 +46,14 @@ describe("encoded output validation", () => {
     expect(
       validateEncodedMetadata({ width: 99, height: 80, mimeType: "image/png", size: 0 }, format),
     ).toHaveLength(3);
+  });
+});
+
+describe("semantic source rotation", () => {
+  it("swaps dimensions only for quarter turns", () => {
+    expect(rotatedDimensions(4000, 3000, 0)).toEqual({ width: 4000, height: 3000 });
+    expect(rotatedDimensions(4000, 3000, 90)).toEqual({ width: 3000, height: 4000 });
+    expect(rotatedDimensions(4000, 3000, 180)).toEqual({ width: 4000, height: 3000 });
+    expect(rotatedDimensions(4000, 3000, 270)).toEqual({ width: 3000, height: 4000 });
   });
 });

@@ -1,7 +1,7 @@
 import { ANALYSIS_JSON_SCHEMA, validateAnalysis } from "./analysis";
 import { HttpError, withRetry } from "./retry";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
-import { resolveOpenAIResponsesUrl } from "../config/api";
+import { DEEPSEEK_RESPONSES_URL } from "../config/api";
 import type { AnalysisResult, ModelId, OutputFormat } from "../types";
 
 type AnalyzeInput = {
@@ -21,9 +21,10 @@ type ResponsePayload = {
   id?: string;
   status?: string;
   error?: { code?: string; message?: string } | null;
+  incomplete_details?: { reason?: string } | null;
   output?: Array<{
     type?: string;
-    content?: Array<{ type?: string; text?: string; refusal?: string }>;
+    content?: Array<{ type?: string; text?: string }>;
   }>;
 };
 
@@ -38,7 +39,7 @@ function requestText(input: AnalyzeInput, repairErrors?: string[]) {
   }));
 
   return [
-    `Ориентированный исходник: ${input.sourceWidth} × ${input.sourceHeight} px.`,
+    `Исходник после нормализации EXIF, но до визуальной проверки ориентации: ${input.sourceWidth} × ${input.sourceHeight} px.`,
     `Целевые форматы: ${JSON.stringify(formatList)}.`,
     input.globalPrompt
       ? `Общее уточнение пользователя: ${input.globalPrompt}`
@@ -49,26 +50,25 @@ function requestText(input: AnalyzeInput, repairErrors?: string[]) {
     repairErrors?.length
       ? `Предыдущий ответ не прошёл проверку. Исправь все ошибки и верни полный объект для тех же formatId: ${repairErrors.join(" | ")}`
       : "Верни полный план обработки для каждого переданного formatId.",
+    "Ответ должен быть одним JSON-объектом, точно соответствующим переданной JSON Schema, без Markdown, пояснений до или после JSON.",
   ].join("\n");
 }
 
 function safeApiError(status: number, code?: string): HttpError {
   if (status === 401)
-    return new HttpError("API key отклонён OpenAI. Проверьте ключ.", status, code);
-  if (status === 403)
-    return new HttpError(
-      "У проекта нет доступа к выбранной модели или Responses API.",
-      status,
-      code,
-    );
+    return new HttpError("API key отклонён DeepSeek. Проверьте ключ.", status, code);
+  if (status === 402)
+    return new HttpError("На балансе DeepSeek недостаточно средств.", status, code);
+  if (status === 403) return new HttpError("DeepSeek отклонил доступ к API.", status, code);
   if (status === 404 || code === "model_not_found")
-    return new HttpError("Выбранная модель недоступна. Выберите другой профиль.", status, code);
+    return new HttpError("Модель deepseek-flash недоступна аккаунту.", status, code);
+  if (status === 422) return new HttpError("DeepSeek отклонил параметры запроса.", status, code);
   if (status === 429)
-    return new HttpError("Достигнут лимит запросов OpenAI. Повторите позже.", status, code);
+    return new HttpError("Достигнут лимит запросов DeepSeek. Повторите позже.", status, code);
   if (status >= 500)
-    return new HttpError("Временная ошибка OpenAI. Повторите позже.", status, code);
+    return new HttpError("Временная ошибка DeepSeek. Повторите позже.", status, code);
   return new HttpError(
-    "OpenAI не смог обработать запрос. Проверьте настройки и изображение.",
+    "DeepSeek не смог обработать запрос. Проверьте настройки и изображение.",
     status,
     code,
   );
@@ -76,24 +76,29 @@ function safeApiError(status: number, code?: string): HttpError {
 
 function extractOutputText(payload: ResponsePayload): string {
   if (payload.error) {
-    throw new NonRepairableAnalysisError("OpenAI вернул ошибку при формировании ответа.");
+    throw new NonRepairableAnalysisError("DeepSeek вернул ошибку при формировании ответа.");
   }
   for (const item of payload.output ?? []) {
     for (const content of item.content ?? []) {
-      if (content.type === "refusal") {
-        throw new NonRepairableAnalysisError("Модель отказалась анализировать это изображение.");
-      }
       if (content.type === "output_text" && content.text) return content.text;
     }
   }
-  throw new Error("OpenAI вернул ответ без структурированных данных.");
+  if (payload.status === "incomplete") {
+    const reason = payload.incomplete_details?.reason;
+    throw new Error(
+      reason === "max_output_tokens"
+        ? "DeepSeek исчерпал лимит вывода до формирования JSON."
+        : "DeepSeek вернул незавершённый ответ без JSON.",
+    );
+  }
+  throw new Error("DeepSeek вернул пустой ответ без JSON. Повтори полный JSON-объект.");
 }
 
-async function callOpenAI(input: AnalyzeInput, repairErrors?: string[]) {
+async function callDeepSeek(input: AnalyzeInput, repairErrors?: string[]) {
   const fetchImpl = input.fetchImpl ?? fetch;
   const response = await withRetry(
     () =>
-      fetchImpl(resolveOpenAIResponsesUrl(), {
+      fetchImpl(DEEPSEEK_RESPONSES_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${input.apiKey}`,
@@ -102,7 +107,6 @@ async function callOpenAI(input: AnalyzeInput, repairErrors?: string[]) {
         signal: input.signal,
         body: JSON.stringify({
           model: input.model,
-          store: false,
           instructions: SYSTEM_PROMPT,
           input: [
             {
@@ -113,11 +117,11 @@ async function callOpenAI(input: AnalyzeInput, repairErrors?: string[]) {
               ],
             },
           ],
+          reasoning: { effort: "none" },
           text: {
             format: {
               type: "json_schema",
               name: "photo_processing_plan",
-              strict: true,
               schema: ANALYSIS_JSON_SCHEMA,
             },
           },
@@ -153,7 +157,7 @@ export async function analyzePhoto(input: AnalyzeInput): Promise<AnalysisResult>
   let errors: string[];
 
   try {
-    candidate = await callOpenAI(input);
+    candidate = await callDeepSeek(input);
     const first = validateAnalysis(candidate, input.formats, input.sourceWidth, input.sourceHeight);
     if (first.success) return first.data;
     errors = first.errors;
@@ -169,7 +173,7 @@ export async function analyzePhoto(input: AnalyzeInput): Promise<AnalysisResult>
     errors = [error instanceof Error ? error.message : "Неизвестная ошибка ответа."];
   }
 
-  candidate = await callOpenAI(input, errors);
+  candidate = await callDeepSeek(input, errors);
   const repaired = validateAnalysis(
     candidate,
     input.formats,
@@ -207,5 +211,5 @@ export function createMockAnalysis(
       rationale: "Центральное кадрирование для тестового режима.",
     };
   });
-  return { sourceSummary: "Тестовое изображение", subjects: [], outputs };
+  return { sourceSummary: "Тестовое изображение", sourceRotation: 0, subjects: [], outputs };
 }

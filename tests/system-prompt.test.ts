@@ -27,4 +27,27 @@ describe("vision system prompt", () => {
       "Удаление нежелательных полос не может ухудшать первые четыре пункта",
     );
   });
+
+  it("requires a visual orientation check before cropping", () => {
+    expect(SYSTEM_PROMPT).toContain("обязательно проверь визуальную ориентацию фотографии");
+    expect(SYSTEM_PROMPT).toContain("sourceRotation");
+    expect(SYSTEM_PROMPT).toContain("строго 0, 90, 180 или 270 градусов");
+    expect(SYSTEM_PROMPT).toContain("Не поворачивай изображение только ради совпадения");
+    expect(SYSTEM_PROMPT).toContain("системе координат изображения после sourceRotation");
+  });
+
+  it("spells out the normalized crop aspect formula", () => {
+    expect(SYSTEM_PROMPT).toContain(
+      "crop.width / crop.height = (targetWidth / targetHeight) × (рабочий sourceHeight / рабочий sourceWidth)",
+    );
+    expect(SYSTEM_PROMPT).toContain(
+      "Не приравнивай crop.width / crop.height напрямую к targetWidth / targetHeight",
+    );
+  });
+
+  it("requires full face boxes and keeps crop borders away from them", () => {
+    expect(SYSTEM_PROMPT).toContain('отдельный subject с kind="face"');
+    expect(SYSTEM_PROMPT).toContain("всю видимую голову вместе с волосами");
+    expect(SYSTEM_PROMPT).toContain("граница crop не может пересекать face box");
+  });
 });

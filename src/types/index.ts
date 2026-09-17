@@ -16,6 +16,8 @@ export type OutputFormat = {
 
 export type Box = { x: number; y: number; width: number; height: number };
 
+export type RotationDegrees = 0 | 90 | 180 | 270;
+
 export type Adjustments = {
   exposure: number;
   contrast: number;
@@ -28,6 +30,7 @@ export type Adjustments = {
 
 export type AnalysisResult = {
   sourceSummary: string;
+  sourceRotation: RotationDegrees;
   subjects: Array<{
     kind: "person" | "face" | "object" | "text" | "logo" | "other";
     description: string;
@@ -82,4 +85,4 @@ export type PhotoItem = {
   outputs: PreparedOutput[];
 };
 
-export type ModelId = "gpt-5.6-terra" | "gpt-6-astra" | "gpt-5.6-luna";
+export type ModelId = "deepseek-flash";

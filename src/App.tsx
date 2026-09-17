@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { createResultsZip } from "./lib/archive";
 import { DEFAULT_MODEL, MODEL_PROFILES } from "./config/models";
-import { OPENAI_PROXY_CONFIGURED } from "./config/api";
 import { DEFAULT_FORMATS } from "./data/default-formats";
 import { createFormatId } from "./lib/format";
 import {
@@ -12,7 +11,7 @@ import {
   exportCatalog,
 } from "./lib/storage";
 import { MAX_UPLOAD_BYTES, readImageDimensions } from "./lib/image";
-import { analyzePhoto, createMockAnalysis } from "./lib/openai";
+import { analyzePhoto, createMockAnalysis } from "./lib/deepseek";
 import { mapConcurrent, runPhotoPipeline } from "./lib/pipeline";
 import type { ModelId, OutputFormat, PhotoItem } from "./types";
 import { FormatCatalog } from "./components/FormatCatalog";
@@ -48,9 +47,7 @@ function downloadBlob(blob: Blob, filename: string) {
 function describeError(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") return "Операция отменена.";
   if (error instanceof TypeError)
-    return OPENAI_PROXY_CONFIGURED
-      ? "Не удалось связаться с OpenAI proxy. Проверьте сеть и повторите попытку."
-      : "Прямой запрос к OpenAI заблокирован браузером или сетью. Для опубликованной версии настройте OpenAI proxy.";
+    return "Не удалось связаться с DeepSeek API. Проверьте сеть и повторите попытку.";
   if (error instanceof RangeError) return "Браузеру не хватило памяти для обработки изображения.";
   return error instanceof Error ? error.message : "Неизвестная ошибка обработки.";
 }
@@ -304,7 +301,7 @@ export default function App() {
             },
             {
               analyze:
-                import.meta.env.VITE_MOCK_OPENAI === "true"
+                import.meta.env.VITE_MOCK_DEEPSEEK === "true"
                   ? async (input) =>
                       createMockAnalysis(input.formats, input.sourceWidth, input.sourceHeight)
                   : analyzePhoto,
@@ -367,7 +364,7 @@ export default function App() {
     : !selectedFormats.length
       ? "Выберите хотя бы один формат"
       : !apiKey.trim()
-        ? "Введите OpenAI API key"
+        ? "Введите DeepSeek API key"
         : "";
 
   return (
@@ -392,8 +389,8 @@ export default function App() {
             <em>Все нужные форматы.</em>
           </h1>
           <p className="hero__lead">
-            OpenAI помогает выбрать композицию, а кадрирование, цвет и сжатие выполняются локально —
-            прямо в этой вкладке.
+            DeepSeek помогает выбрать композицию, а кадрирование, цвет и сжатие выполняются локально
+            — прямо в этой вкладке.
           </p>
           <div className="hero__facts">
             <span>
@@ -424,13 +421,13 @@ export default function App() {
             <span className="step">01</span>
             <div>
               <p className="eyebrow">Доступ и модель</p>
-              <h2 id="access-title">Подключите OpenAI</h2>
+              <h2 id="access-title">Подключите DeepSeek</h2>
             </div>
           </div>
           <div className="settings-grid">
             <div className="panel key-panel">
               <label className="field">
-                <span>OpenAI API key</span>
+                <span>DeepSeek API key</span>
                 <div className="password-input">
                   <input
                     type={showKey ? "text" : "password"}
@@ -452,9 +449,9 @@ export default function App() {
               <div className="security-note">
                 <strong>Ключ хранится только в памяти вкладки</strong>
                 <p>
-                  {OPENAI_PROXY_CONFIGURED
-                    ? "Запрос проходит через проектный proxy без сохранения ключа и тела. Ключ всё равно доступен JavaScript страницы — используйте отдельный проектный ключ с небольшим лимитом расходов."
-                    : "Proxy не настроен: браузер обращается к OpenAI напрямую, и некоторые сети могут блокировать запрос. Используйте только доверенную сборку и отдельный проектный ключ с небольшим лимитом расходов."}
+                  Браузер обращается напрямую к официальному DeepSeek API. Ключ доступен JavaScript
+                  страницы — используйте только доверенную сборку и отдельный ключ с небольшим
+                  лимитом расходов.
                 </p>
               </div>
             </div>
@@ -841,7 +838,8 @@ export default function App() {
           Кадр
         </span>
         <p>
-          Фотографии обрабатываются локально. В OpenAI уходит только уменьшенная копия для анализа.
+          Фотографии обрабатываются локально. В DeepSeek уходит только уменьшенная копия для
+          анализа.
         </p>
       </footer>
 

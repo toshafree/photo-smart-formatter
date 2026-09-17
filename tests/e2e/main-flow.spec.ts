@@ -7,7 +7,7 @@ const onePixelPng = Buffer.from(
 
 test("uploads a photo and prepares a result without a real API call", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("OpenAI API key").fill("sk-test-only");
+  await page.getByLabel("DeepSeek API key").fill("sk-test-only");
   await page.getByRole("button", { name: "+ Свой формат" }).click();
   await page.getByLabel("Название *").fill("Smoke вертикальный");
   await page.getByLabel("Ширина, px *").fill("64");

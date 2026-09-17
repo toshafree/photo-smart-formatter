@@ -1,7 +1,6 @@
 import type { Box, OutputFormat } from "../types";
 
 export const ASPECT_EPSILON = 0.005;
-export const REPAIRABLE_ASPECT_ERROR = 0.03;
 
 export function normalizedCropAspect(crop: Box, sourceWidth: number, sourceHeight: number) {
   return (crop.width * sourceWidth) / (crop.height * sourceHeight);
@@ -20,22 +19,67 @@ export function repairCropAspect(
   const normalizedTarget = targetAspect * (sourceHeight / sourceWidth);
   const centerX = crop.x + crop.width / 2;
   const centerY = crop.y + crop.height / 2;
-  let width = crop.height * normalizedTarget;
+  const currentNormalizedAspect = crop.width / crop.height;
+  let width = crop.width;
   let height = crop.height;
 
-  if (width > 1) {
-    width = crop.width;
-    height = crop.width / normalizedTarget;
+  if (currentNormalizedAspect < normalizedTarget) {
+    width = height * normalizedTarget;
+    if (width > 1) {
+      width = 1;
+      height = 1 / normalizedTarget;
+    }
+  } else {
+    height = width / normalizedTarget;
+    if (height > 1) {
+      height = 1;
+      width = normalizedTarget;
+    }
   }
-
-  const maxWidthAtCenter = 2 * Math.min(centerX, 1 - centerX);
-  const maxHeightAtCenter = 2 * Math.min(centerY, 1 - centerY);
-  const scale = Math.min(1, maxWidthAtCenter / width, maxHeightAtCenter / height);
-  width *= scale;
-  height *= scale;
 
   const x = Math.min(1 - width, Math.max(0, centerX - width / 2));
   const y = Math.min(1 - height, Math.max(0, centerY - height / 2));
+  return { x, y, width, height };
+}
+
+function positionToCover(
+  current: number,
+  size: number,
+  requiredStart: number,
+  requiredEnd: number,
+) {
+  const minimum = Math.max(0, requiredEnd - size);
+  const maximum = Math.min(requiredStart, 1 - size);
+  if (minimum <= maximum) return Math.min(maximum, Math.max(minimum, current));
+  return Math.min(1 - size, Math.max(0, (requiredStart + requiredEnd - size) / 2));
+}
+
+export function protectBoxesInCrop(
+  crop: Box,
+  boxes: Box[],
+  targetAspect: number,
+  sourceWidth: number,
+  sourceHeight: number,
+  margin = 0.04,
+): Box {
+  if (!boxes.length) return crop;
+
+  const normalizedTarget = targetAspect * (sourceHeight / sourceWidth);
+  const requiredLeft = Math.max(0, Math.min(...boxes.map((box) => box.x)) - margin);
+  const requiredTop = Math.max(0, Math.min(...boxes.map((box) => box.y)) - margin);
+  const requiredRight = Math.min(1, Math.max(...boxes.map((box) => box.x + box.width)) + margin);
+  const requiredBottom = Math.min(1, Math.max(...boxes.map((box) => box.y + box.height)) + margin);
+  const maximumWidth = Math.min(1, normalizedTarget);
+  const maximumHeight = maximumWidth / normalizedTarget;
+  let width = Math.max(
+    crop.width,
+    requiredRight - requiredLeft,
+    (requiredBottom - requiredTop) * normalizedTarget,
+  );
+  width = Math.min(maximumWidth, width);
+  const height = Math.min(maximumHeight, width / normalizedTarget);
+  const x = positionToCover(crop.x, width, requiredLeft, requiredRight);
+  const y = positionToCover(crop.y, height, requiredTop, requiredBottom);
   return { x, y, width, height };
 }
 

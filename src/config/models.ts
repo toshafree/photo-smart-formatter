@@ -6,20 +6,10 @@ export const MODEL_PROFILES: Array<{
   description: string;
 }> = [
   {
-    id: "gpt-5.6-terra",
-    label: "Сбалансированный",
-    description: "Оптимальный баланс качества и стоимости",
-  },
-  {
-    id: "gpt-6-astra",
-    label: "Максимальное качество",
-    description: "Для сложных сцен и точной композиции",
-  },
-  {
-    id: "gpt-5.6-luna",
-    label: "Экономичный",
-    description: "Для больших партий и простых кадров",
+    id: "deepseek-flash",
+    label: "DeepSeek Vision",
+    description: "Мультимодальная модель для анализа фотографий и точного JSON",
   },
 ];
 
-export const DEFAULT_MODEL: ModelId = "gpt-5.6-terra";
+export const DEFAULT_MODEL: ModelId = "deepseek-flash";

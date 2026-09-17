@@ -1,6 +1,12 @@
 import { validateAnalysis } from "./analysis";
 import { applyFilenameTemplate, dedupeFilename } from "./filename";
-import { createVisionPreview, decodeNormalizedImage, releaseCanvas, renderOutput } from "./image";
+import {
+  createVisionPreview,
+  decodeNormalizedImage,
+  releaseCanvas,
+  renderOutput,
+  rotateCanvas,
+} from "./image";
 import type { AnalysisResult, JobStatus, ModelId, OutputFormat, PreparedOutput } from "../types";
 
 export type JobUpdate = { status: JobStatus; progress: number; text: string };
@@ -30,6 +36,7 @@ export type PipelineDependencies = {
   }) => Promise<AnalysisResult>;
   decode?: typeof decodeNormalizedImage;
   preview?: typeof createVisionPreview;
+  rotate?: typeof rotateCanvas;
   render?: typeof renderOutput;
   createObjectUrl?: (blob: Blob) => string;
 };
@@ -40,6 +47,7 @@ export async function runPhotoPipeline(
 ): Promise<PreparedOutput[]> {
   const decode = dependencies.decode ?? decodeNormalizedImage;
   const preview = dependencies.preview ?? createVisionPreview;
+  const rotate = dependencies.rotate ?? rotateCanvas;
   const render = dependencies.render ?? renderOutput;
   const createObjectUrl = dependencies.createObjectUrl ?? URL.createObjectURL;
   const update = input.onUpdate;
@@ -59,7 +67,7 @@ export async function runPhotoPipeline(
   }
   assertActive();
 
-  update({ status: "analyzing", progress: 24, text: "OpenAI анализирует композицию" });
+  update({ status: "analyzing", progress: 24, text: "DeepSeek анализирует композицию" });
   const rawAnalysis = await dependencies.analyze({
     apiKey: input.apiKey,
     model: input.model,
@@ -78,6 +86,7 @@ export async function runPhotoPipeline(
   if (!validation.success) throw new Error(validation.errors.join(" "));
 
   const source = await decode(input.file);
+  const renderSource = rotate(source, validation.data.sourceRotation);
   const outputs: PreparedOutput[] = [];
   const usedNames = new Set<string>();
   try {
@@ -91,13 +100,18 @@ export async function runPhotoPipeline(
         progress: baseProgress,
         text: `Рендеринг: ${format.name}`,
       });
-      const encoded = await render(source, format, instruction.crop, instruction.adjustments);
+      const encoded = await render(renderSource, format, instruction.crop, instruction.adjustments);
       update({
         status: "compressing",
         progress: baseProgress + 4,
         text: `Проверка объёма: ${format.name}`,
       });
       const warnings = [...instruction.warnings];
+      if (validation.data.sourceRotation !== 0) {
+        warnings.push(
+          `Исходник автоматически повёрнут на ${validation.data.sourceRotation}° по часовой стрелке.`,
+        );
+      }
       if (!encoded.limitMet) {
         warnings.push(
           format.mimeType === "image/png"
@@ -126,6 +140,7 @@ export async function runPhotoPipeline(
     outputs.forEach((output) => URL.revokeObjectURL(output.objectUrl));
     throw error;
   } finally {
+    if (renderSource !== source) releaseCanvas(renderSource);
     releaseCanvas(source);
   }
   update({ status: "done", progress: 100, text: "Готово" });
