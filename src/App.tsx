@@ -724,7 +724,7 @@ export default function App() {
                 <span className="step">05</span>
                 <div>
                   <p className="eyebrow">Результаты</p>
-                  <h2 id="results-title">До и после</h2>
+                  <h2 id="results-title">Готовые изображения</h2>
                 </div>
               </div>
               <button
@@ -752,18 +752,19 @@ export default function App() {
                     <div className="result-grid">
                       {photo.outputs.map((output) => (
                         <article className="result-card" key={output.format.id}>
-                          <div className="comparison">
-                            <figure>
-                              <img src={photo.previewUrl} alt={`Исходник ${photo.file.name}`} />
-                              <figcaption>До</figcaption>
-                            </figure>
-                            <figure>
-                              <img
-                                src={output.objectUrl}
-                                alt={`${output.format.name}, результат`}
-                              />
-                              <figcaption>После</figcaption>
-                            </figure>
+                          <div
+                            className="result-preview"
+                            style={{
+                              aspectRatio: `${output.actualWidth} / ${output.actualHeight}`,
+                            }}
+                          >
+                            <img
+                              src={output.objectUrl}
+                              alt={`${output.format.name}, результат`}
+                              width={output.actualWidth}
+                              height={output.actualHeight}
+                              loading="lazy"
+                            />
                           </div>
                           <div className="result-card__body">
                             <div>
