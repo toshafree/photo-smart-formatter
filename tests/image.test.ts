@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { findJpegQuality, validateEncodedMetadata } from "../src/lib/image";
+import {
+  findJpegQuality,
+  findLargestFittingDetailScale,
+  validateEncodedMetadata,
+} from "../src/lib/image";
 import { rotatedDimensions } from "../src/lib/orientation";
 import type { OutputFormat } from "../src/types";
 
@@ -39,6 +43,27 @@ describe("JPEG quality search", () => {
   it("reports an impossible limit without changing dimensions", async () => {
     const encode = async () => new Blob([new Uint8Array(1000)], { type: "image/jpeg" });
     expect((await findJpegQuality(encode, 500)).limitMet).toBe(false);
+  });
+});
+
+describe("JPEG detail fallback", () => {
+  it("finds the largest detail scale whose minimum-quality JPEG fits", async () => {
+    const encode = async (detailScale: number) =>
+      new Blob([new Uint8Array(Math.round(100 + detailScale * 1000))], {
+        type: "image/jpeg",
+      });
+    const result = await findLargestFittingDetailScale(encode, 600, { iterations: 12 });
+    expect(result.limitMet).toBe(true);
+    expect(result.blob.size).toBeLessThanOrEqual(600);
+    expect(result.detailScale).toBeGreaterThan(0.49);
+    expect(result.detailScale).toBeLessThanOrEqual(0.501);
+  });
+
+  it("reports a limit below the smallest fallback representation", async () => {
+    const encode = async () => new Blob([new Uint8Array(300)], { type: "image/jpeg" });
+    const result = await findLargestFittingDetailScale(encode, 200);
+    expect(result.limitMet).toBe(false);
+    expect(result.blob.size).toBe(300);
   });
 });
 

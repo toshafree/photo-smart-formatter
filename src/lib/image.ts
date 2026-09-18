@@ -203,6 +203,108 @@ export async function findJpegQuality(
   return { blob: bestBlob, quality: bestQuality, limitMet: true };
 }
 
+export async function findLargestFittingDetailScale(
+  encode: (detailScale: number) => Promise<Blob>,
+  maxBytes: number,
+  options: { min?: number; max?: number; iterations?: number } = {},
+) {
+  const minimum = options.min ?? 0.01;
+  const maximum = options.max ?? 1;
+  const iterations = options.iterations ?? 7;
+  const minimumBlob = await encode(minimum);
+  if (minimumBlob.size > maxBytes) {
+    return { blob: minimumBlob, detailScale: minimum, limitMet: false };
+  }
+
+  let low = minimum;
+  let high = maximum;
+  let bestBlob = minimumBlob;
+  let bestScale = minimum;
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const detailScale = (low + high) / 2;
+    const blob = await encode(detailScale);
+    if (blob.size <= maxBytes) {
+      low = detailScale;
+      bestBlob = blob;
+      bestScale = detailScale;
+    } else {
+      high = detailScale;
+    }
+  }
+  return { blob: bestBlob, detailScale: bestScale, limitMet: true };
+}
+
+async function redrawWithReducedDetail(
+  source: HTMLCanvasElement,
+  target: HTMLCanvasElement,
+  detailScale: number,
+) {
+  const reduced = createCanvas(
+    Math.max(1, Math.round(source.width * detailScale)),
+    Math.max(1, Math.round(source.height * detailScale)),
+  );
+  try {
+    await pica.resize(source, reduced, { quality: 3, alpha: false });
+    const context = getContext(target);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(
+      reduced,
+      0,
+      0,
+      reduced.width,
+      reduced.height,
+      0,
+      0,
+      target.width,
+      target.height,
+    );
+  } finally {
+    releaseCanvas(reduced);
+  }
+}
+
+async function encodeJpegWithinLimit(outputCanvas: HTMLCanvasElement, format: OutputFormat) {
+  const regular = await findJpegQuality(
+    (quality) => canvasToBlob(outputCanvas, format.mimeType, quality),
+    format.maxBytes,
+  );
+  if (regular.limitMet) return { ...regular, detailScale: 1 };
+
+  const fallbackCanvas = createCanvas(outputCanvas.width, outputCanvas.height);
+  const minimumDetailScale = Math.min(
+    1,
+    Math.max(32 / outputCanvas.width, 32 / outputCanvas.height),
+  );
+  try {
+    const scaleSearch = await findLargestFittingDetailScale(
+      async (detailScale) => {
+        await redrawWithReducedDetail(outputCanvas, fallbackCanvas, detailScale);
+        return canvasToBlob(fallbackCanvas, format.mimeType, 0);
+      },
+      format.maxBytes,
+      { min: minimumDetailScale },
+    );
+    if (!scaleSearch.limitMet) {
+      return {
+        blob: scaleSearch.blob,
+        quality: 0,
+        limitMet: false,
+        detailScale: scaleSearch.detailScale,
+      };
+    }
+
+    await redrawWithReducedDetail(outputCanvas, fallbackCanvas, scaleSearch.detailScale);
+    const compressed = await findJpegQuality(
+      (quality) => canvasToBlob(fallbackCanvas, format.mimeType, quality),
+      format.maxBytes,
+    );
+    return { ...compressed, detailScale: scaleSearch.detailScale };
+  } finally {
+    releaseCanvas(fallbackCanvas);
+  }
+}
+
 export type EncodedMetadata = {
   width: number;
   height: number;
@@ -273,17 +375,14 @@ export async function renderOutput(
     applyAdjustments(outputCanvas, adjustments);
 
     if (format.mimeType === "image/jpeg") {
-      const encoded = await findJpegQuality(
-        (quality) => canvasToBlob(outputCanvas, format.mimeType, quality),
-        format.maxBytes,
-      );
+      const encoded = await encodeJpegWithinLimit(outputCanvas, format);
       await inspectEncodedBlob(encoded.blob, format);
       return encoded;
     }
 
     const blob = await canvasToBlob(outputCanvas, "image/png");
     await inspectEncodedBlob(blob, format);
-    return { blob, quality: null, limitMet: blob.size <= format.maxBytes };
+    return { blob, quality: null, limitMet: blob.size <= format.maxBytes, detailScale: 1 };
   } finally {
     releaseCanvas(cropCanvas);
     releaseCanvas(outputCanvas);

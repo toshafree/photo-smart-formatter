@@ -112,6 +112,11 @@ export async function runPhotoPipeline(
           `Исходник автоматически повёрнут на ${validation.data.sourceRotation}° по часовой стрелке.`,
         );
       }
+      if ((encoded.detailScale ?? 1) < 0.999) {
+        warnings.push(
+          `Для соблюдения лимита внутренняя детализация снижена до ${Math.round((encoded.detailScale ?? 1) * 100)}% с сохранением точного размера в пикселях.`,
+        );
+      }
       if (!encoded.limitMet) {
         warnings.push(
           format.mimeType === "image/png"
