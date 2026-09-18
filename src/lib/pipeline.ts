@@ -116,7 +116,7 @@ export async function runPhotoPipeline(
         warnings.push(
           format.mimeType === "image/png"
             ? "Lossless PNG не укладывается в лимит. Параметр quality для PNG намеренно не используется."
-            : "Даже JPEG с минимальным качеством 45% не укладывается в лимит.",
+            : "Даже JPEG с минимально доступным качеством не укладывается в лимит.",
         );
       }
       const filename = dedupeFilename(

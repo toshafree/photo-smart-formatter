@@ -26,6 +26,16 @@ describe("JPEG quality search", () => {
     expect(result.quality).toBeGreaterThan(0.58);
   });
 
+  it("uses qualities below the old 45% floor when required by the byte limit", async () => {
+    const encode = async (quality: number) =>
+      new Blob([new Uint8Array(Math.round(quality * 1000))], { type: "image/jpeg" });
+    const result = await findJpegQuality(encode, 200, { iterations: 12 });
+    expect(result.limitMet).toBe(true);
+    expect(result.blob.size).toBeLessThanOrEqual(200);
+    expect(result.quality).toBeGreaterThan(0.19);
+    expect(result.quality).toBeLessThanOrEqual(0.201);
+  });
+
   it("reports an impossible limit without changing dimensions", async () => {
     const encode = async () => new Blob([new Uint8Array(1000)], { type: "image/jpeg" });
     expect((await findJpegQuality(encode, 500)).limitMet).toBe(false);

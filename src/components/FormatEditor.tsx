@@ -17,7 +17,7 @@ export function FormatEditor({ initial, onSave, onClose }: Props) {
   const [width, setWidth] = useState(String(initial?.width ?? 1200));
   const [height, setHeight] = useState(String(initial?.height ?? 800));
   const [mimeType, setMimeType] = useState<OutputMimeType>(initial?.mimeType ?? "image/jpeg");
-  const [maxKb, setMaxKb] = useState(String(Math.round((initial?.maxBytes ?? 500 * 1024) / 1024)));
+  const [maxKb, setMaxKb] = useState(String(Math.round((initial?.maxBytes ?? 200 * 1024) / 1024)));
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [filenameTemplate, setFilenameTemplate] = useState(initial?.filenameTemplate ?? template);
   const [error, setError] = useState("");

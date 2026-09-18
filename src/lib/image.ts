@@ -176,9 +176,9 @@ export async function findJpegQuality(
   maxBytes: number,
   options: { min?: number; max?: number; iterations?: number } = {},
 ) {
-  const minimum = options.min ?? 0.45;
-  const maximum = options.max ?? 0.95;
-  const iterations = options.iterations ?? 7;
+  const minimum = options.min ?? 0;
+  const maximum = options.max ?? 1;
+  const iterations = options.iterations ?? 10;
   const highBlob = await encode(maximum);
   if (highBlob.size <= maxBytes) return { blob: highBlob, quality: maximum, limitMet: true };
 
